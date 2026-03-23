@@ -1,63 +1,34 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
-import '../widgets/shimmer_loading.dart';
 import 'result_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class ScanScreen extends StatefulWidget {
+  const ScanScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _ScanScreenState extends State<ScanScreen> {
   final TextEditingController _textController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  XFile? _selectedImage;
   bool _isLoading = false;
   String? _errorMessage;
-  String _selectedType = 'All';
+  String _selectedType = 'Medical Bill';
 
-  final List<String> _textTypes = [
-    'All',
-    'Message',
+  final List<String> _docTypes = [
+    'Medical Bill',
     'Contract',
-    'Medical',
-    'Email',
+    'Legal Notice',
+    'Insurance Claim',
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    _textController.addListener(() {
-      if (mounted) setState(() {});
-    });
-    _checkClipboard();
-  }
-
-  Future<void> _checkClipboard() async {
-    try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (data?.text != null &&
-          data!.text!.isNotEmpty &&
-          data.text!.length > 20 &&
-          mounted) {
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('Text detected on clipboard'),
-            action: SnackBarAction(
-              label: 'Paste',
-              onPressed: _pasteFromClipboard,
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (_) {}
-  }
 
   @override
   void dispose() {
@@ -65,10 +36,45 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Future<void> _takePhoto() async {
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (photo != null) {
+        setState(() {
+          _selectedImage = photo;
+          _errorMessage = null;
+        });
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Could not access camera: $e');
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (image != null) {
+        setState(() {
+          _selectedImage = image;
+          _errorMessage = null;
+        });
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Could not access gallery: $e');
+    }
+  }
+
   Future<void> _analyzeText() async {
     final text = _textController.text.trim();
     if (text.isEmpty) {
-      setState(() => _errorMessage = 'Please enter some text to analyze.');
+      setState(
+          () => _errorMessage = 'Please type or paste the document text below.');
       return;
     }
 
@@ -80,8 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
     HapticFeedback.mediumImpact();
 
     try {
-      final contextPrefix =
-          _selectedType != 'All' ? '[Text type: $_selectedType] ' : '';
+      final contextPrefix = '[Document type: $_selectedType] ';
       final result = await ApiService.analyzeText('$contextPrefix$text');
       await StorageService.addToHistory(result);
 
@@ -128,36 +133,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _pasteFromClipboard() async {
-    HapticFeedback.selectionClick();
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text != null && data!.text!.isNotEmpty) {
-      setState(() {
-        _textController.text = data.text!;
-        _textController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _textController.text.length),
-        );
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Text pasted from clipboard'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Clipboard is empty'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -170,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             SliverAppBar.large(
               title: Text(
-                'Contextify',
+                'Scan Document',
                 style: GoogleFonts.spaceGrotesk(
                   fontWeight: FontWeight.w800,
                 ),
@@ -180,9 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // Subtitle
                   Text(
-                    'Decode any text with AI',
+                    'Capture or pick a document to analyze',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -192,15 +166,104 @@ class _HomeScreenState extends State<HomeScreen> {
                       .slideY(begin: 0.1, end: 0),
                   const SizedBox(height: 20),
 
-                  // Filter chips
+                  // Camera / Gallery buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.camera_alt_rounded,
+                          label: 'Take Photo',
+                          onTap: _takePhoto,
+                          colorScheme: colorScheme,
+                          theme: theme,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildActionCard(
+                          icon: Icons.photo_library_rounded,
+                          label: 'Pick from Gallery',
+                          onTap: _pickFromGallery,
+                          colorScheme: colorScheme,
+                          theme: theme,
+                        ),
+                      ),
+                    ],
+                  )
+                      .animate()
+                      .fadeIn(delay: 100.ms, duration: 400.ms),
+
+                  const SizedBox(height: 20),
+
+                  // Image preview
+                  if (_selectedImage != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Stack(
+                        children: [
+                          Image.file(
+                            File(_selectedImage!.path),
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Material(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(20),
+                              child: IconButton(
+                                icon: const Icon(Icons.close,
+                                    color: Colors.white, size: 20),
+                                onPressed: () {
+                                  setState(() => _selectedImage = null);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ).animate().fadeIn(duration: 300.ms).scale(
+                          begin: const Offset(0.95, 0.95),
+                          end: const Offset(1, 1),
+                        ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.tertiaryContainer
+                            .withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              color: colorScheme.tertiary, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Photo captured! Please paste or type the text from the document below for AI analysis.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Document type chips
                   SizedBox(
                     height: 42,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _textTypes.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemCount: _docTypes.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
-                        final type = _textTypes[index];
+                        final type = _docTypes[index];
                         final isSelected = _selectedType == type;
                         return FilterChip(
                           label: Text(type),
@@ -208,7 +271,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           onSelected: (selected) {
                             HapticFeedback.selectionClick();
                             setState(() {
-                              _selectedType = selected ? type : 'All';
+                              _selectedType =
+                                  selected ? type : 'Medical Bill';
                             });
                           },
                           showCheckmark: false,
@@ -225,20 +289,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                       .animate()
-                      .fadeIn(delay: 100.ms, duration: 400.ms),
+                      .fadeIn(delay: 200.ms, duration: 400.ms),
 
                   const SizedBox(height: 20),
 
-                  // Text Input
+                  // Text input for document content
                   TextField(
                     controller: _textController,
                     maxLines: 8,
-                    minLines: 6,
+                    minLines: 5,
                     decoration: InputDecoration(
                       hintText:
-                          'Paste any text to decode — messages, contracts, emails...',
+                          'Type or paste the text from your document here...',
                       hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color:
+                            colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       ),
                       suffixIcon: _textController.text.isNotEmpty
                           ? IconButton(
@@ -255,32 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                       .animate()
-                      .fadeIn(delay: 200.ms, duration: 400.ms),
-
-                  // Character count
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, right: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${_textController.text.length} chars',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      .fadeIn(delay: 300.ms, duration: 400.ms),
 
                   // Error message
                   if (_errorMessage != null) ...[
@@ -314,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Analyze Button
+                  // Analyze button
                   SizedBox(
                     height: 56,
                     child: _isLoading
@@ -331,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Analyzing with AI...',
+                                'Analyzing document...',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: colorScheme.primary,
                                   fontWeight: FontWeight.w600,
@@ -370,12 +410,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        Icons.psychology_rounded,
+                                        Icons.document_scanner_rounded,
                                         color: colorScheme.onPrimary,
                                       ),
                                       const SizedBox(width: 10),
                                       Text(
-                                        'Decode Text',
+                                        'Analyze Document',
                                         style: GoogleFonts.spaceGrotesk(
                                           fontSize: 17,
                                           fontWeight: FontWeight.w700,
@@ -390,135 +430,49 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                   )
                       .animate()
-                      .fadeIn(delay: 300.ms, duration: 400.ms),
+                      .fadeIn(delay: 400.ms, duration: 400.ms),
 
-                  // Loading skeleton
-                  if (_isLoading) ...[
-                    const SizedBox(height: 32),
-                    const ShimmerLoading(),
-                  ],
-
-                  // Empty state
-                  if (!_isLoading && _textController.text.isEmpty) ...[
-                    const SizedBox(height: 56),
-                    _buildEmptyState(theme, colorScheme),
-                  ],
+                  const SizedBox(height: 32),
                 ]),
               ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pasteFromClipboard,
-        tooltip: 'Paste from clipboard',
-        child: const Icon(Icons.content_paste_rounded),
-      ),
     );
   }
 
-  static const List<Map<String, String>> _exampleSuggestions = [
-    {
-      'label': 'Try: Analyze a suspicious email',
-      'text':
-          'Dear valued customer, your account has been compromised! Click here immediately to verify your identity or your account will be permanently suspended within 24 hours. This is your final warning. Act now to avoid losing access to all your funds.',
-    },
-    {
-      'label': 'Try: Decode a contract clause',
-      'text':
-          'The Licensee agrees that the Licensor may, at its sole and absolute discretion, modify, suspend, or terminate access to the Service at any time without prior notice or liability. Any continued use after such changes constitutes acceptance of the revised terms.',
-    },
-    {
-      'label': 'Try: Check a marketing message',
-      'text':
-          'CONGRATULATIONS! You have been specially selected from millions of users to receive an EXCLUSIVE offer. For TODAY ONLY, get our premium package worth \$999 for just \$49! But hurry - this offer expires in 15 minutes and will NEVER be available again!',
-    },
-  ];
-
-  Widget _buildEmptyState(ThemeData theme, ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.teal.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.psychology_rounded,
-              size: 64,
-              color: Colors.teal.shade400,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Ready to decode',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Paste any text above to analyze it for\nmanipulation, red flags, and hidden meanings.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.6,
-            ),
-          ),
-          const SizedBox(height: 28),
-          ..._exampleSuggestions.map((example) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Material(
-                  color: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() {
-                        _textController.text = example['text']!;
-                        _textController.selection = TextSelection.fromPosition(
-                          TextPosition(offset: _textController.text.length),
-                        );
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 18,
-                            color: Colors.teal.shade400,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              example['label']!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurface,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 14,
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.5),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+  Widget _buildActionCard({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required ColorScheme colorScheme,
+    required ThemeData theme,
+  }) {
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            children: [
+              Icon(icon, size: 36, color: colorScheme.primary),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface,
                 ),
-              )),
-        ],
+              ),
+            ],
+          ),
+        ),
       ),
-    ).animate().fadeIn(delay: 400.ms, duration: 600.ms);
+    );
   }
 }

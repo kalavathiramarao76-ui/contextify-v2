@@ -4,6 +4,7 @@ import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/history_screen.dart';
+import 'screens/scan_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/onboarding_screen.dart';
 
@@ -107,6 +108,7 @@ class _MainShellState extends State<MainShell> {
         },
         children: [
           const HomeScreen(),
+          const ScanScreen(),
           const HistoryScreen(),
           SettingsScreen(
             onThemeChanged: widget.onThemeChanged,
@@ -122,6 +124,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.document_scanner_outlined),
             selectedIcon: Icon(Icons.document_scanner_rounded),
             label: 'Decode',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.camera_alt_outlined),
+            selectedIcon: Icon(Icons.camera_alt_rounded),
+            label: 'Scan',
           ),
           NavigationDestination(
             icon: Icon(Icons.history_outlined),

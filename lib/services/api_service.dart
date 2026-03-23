@@ -12,7 +12,7 @@ class ApiException implements Exception {
 
 class ApiService {
   static const String _endpoint =
-      'https://sai.sharedllm.com/v1/chat/completions';
+      'https://contextify-v2-api.vercel.app/api/analyze';
   static const String _model = 'gpt-oss:120b';
   static const double _temperature = 0.3;
   static const int _maxTokens = 2048;
